@@ -8,7 +8,7 @@ import { Brain, BookOpen, Grid3X3, Settings, LogOut } from "lucide-react"
 
 export function NavBar() {
   const pathname = usePathname()
-  const { isConnected, account, disconnectWallet } = useWeb3()
+  const { isConnected, isGuest, account, disconnectWallet } = useWeb3()
 
   if (!isConnected) return null
 
@@ -70,7 +70,7 @@ export function NavBar() {
 
           <div className="hidden md:flex items-center">
             <div className="text-xs font-mono bg-cyber-darkgray px-2 py-1 rounded border border-cyber-red/30">
-              {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "Not Connected"}
+              {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : isGuest ? "Guest" : "Not Connected"}
             </div>
           </div>
         </div>

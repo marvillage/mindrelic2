@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation"
 import { CyberButton } from "@/components/ui-elements/cyber-button"
 import { GlassCard } from "@/components/ui-elements/glass-card"
 import { useWeb3 } from "@/components/web3-provider"
-import { Lock, Unlock } from "lucide-react"
+import { Lock, Unlock, UserRound } from "lucide-react"
 
 export default function LoginPortal() {
   const router = useRouter()
-  const { isConnected, isConnecting, connectWallet } = useWeb3()
+  const { isConnected, isConnecting, connectWallet, enterAsGuest } = useWeb3()
   const [loginStatus, setLoginStatus] = useState<"locked" | "unlocking" | "unlocked">("locked")
 
   useEffect(() => {
@@ -70,10 +70,28 @@ export default function LoginPortal() {
         </div>
 
         <CyberButton onClick={handleConnect} disabled={loginStatus !== "locked"} glow className="w-full">
-          {loginStatus === "locked" ? "Enter the Vault" : loginStatus === "unlocking" ? "Connecting..." : "Connected"}
+          {loginStatus === "locked" ? "Connect Wallet" : loginStatus === "unlocking" ? "Connecting..." : "Connected"}
         </CyberButton>
 
-        <p className="mt-4 text-xs text-gray-500 font-rajdhani">Requires MetaMask or compatible Web3 wallet</p>
+        <div className="my-3 flex items-center w-full gap-3 text-gray-600">
+          <div className="h-px flex-1 bg-cyber-red/20" />
+          <span className="text-xs font-rajdhani">or</span>
+          <div className="h-px flex-1 bg-cyber-red/20" />
+        </div>
+
+        <CyberButton
+          variant="outline"
+          onClick={enterAsGuest}
+          disabled={loginStatus !== "locked"}
+          className="w-full"
+        >
+          <UserRound className="w-4 h-4 mr-2" />
+          Explore as Guest
+        </CyberButton>
+
+        <p className="mt-4 text-xs text-gray-500 font-rajdhani text-center">
+          Wallet connect uses MetaMask. Guest mode stores memories locally in your browser.
+        </p>
       </div>
     </GlassCard>
   )

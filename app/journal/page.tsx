@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useWeb3 } from "@/components/web3-provider"
 import { CyberHeading } from "@/components/ui-elements/cyber-heading"
@@ -9,16 +9,21 @@ import { GlassCard } from "@/components/ui-elements/glass-card"
 import { NavBar } from "@/components/nav-bar"
 import { MatrixRain } from "@/components/matrix-rain"
 import { Textarea } from "@/components/ui/textarea"
-import { Mic, ImageIcon, Brain, Loader } from "lucide-react"
+import { Mic, MicOff, Brain, Loader, Check } from "lucide-react"
+import { analyzeEntry } from "@/lib/analyze"
+import { saveMemory, newId } from "@/lib/storage"
 
 export default function JournalPage() {
   const router = useRouter()
-  const { isConnected } = useWeb3()
+  const { isConnected, isGuest, account } = useWeb3()
   const [journalEntry, setJournalEntry] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [mood, setMood] = useState<string | null>(null)
   const [keywords, setKeywords] = useState<string[]>([])
+  const [isListening, setIsListening] = useState(false)
+  const [forged, setForged] = useState(false)
+  const recognitionRef = useRef<any>(null)
 
   // Redirect if not connected
   React.useEffect(() => {
@@ -35,31 +40,75 @@ export default function JournalPage() {
     if (!journalEntry.trim()) return
 
     setIsGenerating(true)
-
-    // Simulate AI processing
-    setTimeout(() => {
-      // This would be replaced with actual AI API call
-      const fakeSummary =
-        "Your memories today reflect a journey through digital landscapes, where thoughts crystallize into eternal fragments. The neural pathways of your consciousness have formed new connections, creating a tapestry of experience that now lives forever in the blockchain."
-      const fakeMood = "contemplative"
-      const fakeKeywords = ["digital", "memory", "consciousness", "eternity"]
-
-      setAiSummary(fakeSummary)
-      setMood(fakeMood)
-      setKeywords(fakeKeywords)
+    setForged(false)
+    try {
+      const analysis = await analyzeEntry(journalEntry)
+      setAiSummary(analysis.summary)
+      setMood(analysis.mood)
+      setKeywords(analysis.keywords)
+    } finally {
       setIsGenerating(false)
-    }, 2000)
+    }
   }
 
-  const mintMemory = async () => {
-    // This would be replaced with actual NFT minting logic
-    alert("Memory forged and stored on the blockchain!")
+  const mintMemory = () => {
+    if (!aiSummary) return
+    const owner = account ?? "guest"
+    saveMemory({
+      id: newId(),
+      date: new Date().toISOString(),
+      content: journalEntry,
+      summary: aiSummary,
+      mood: mood ?? "contemplative",
+      keywords,
+      owner,
+    })
 
-    // Reset the form
+    // Reset the form and confirm.
     setJournalEntry("")
     setAiSummary(null)
     setMood(null)
     setKeywords([])
+    setForged(true)
+    setTimeout(() => setForged(false), 4000)
+  }
+
+  const toggleVoice = () => {
+    // Web Speech API — browser-native, no key required.
+    const SpeechRecognition =
+      typeof window !== "undefined"
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : undefined
+
+    if (!SpeechRecognition) {
+      alert("Voice input isn't supported in this browser. Try Chrome or Edge.")
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.lang = "en-US"
+
+    recognition.onresult = (event: any) => {
+      let transcript = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript
+      }
+      setJournalEntry((prev) => (prev ? `${prev} ${transcript}` : transcript))
+    }
+    recognition.onerror = () => setIsListening(false)
+    recognition.onend = () => setIsListening(false)
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsListening(true)
   }
 
   return (
@@ -73,7 +122,9 @@ export default function JournalPage() {
             <CyberHeading level={2} glow>
               Journal Entry
             </CyberHeading>
-            <p className="text-gray-400 font-rajdhani">Speak your thoughts to MindRelic...</p>
+            <p className="text-gray-400 font-rajdhani">
+              {isGuest ? "Guest mode — your memories are stored in this browser." : "Speak your thoughts to MindRelic..."}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -90,13 +141,18 @@ export default function JournalPage() {
 
                   <div className="mt-4 flex justify-between">
                     <div className="flex space-x-2">
-                      <CyberButton variant="ghost" size="sm">
-                        <Mic className="w-4 h-4 mr-1" />
-                        <span>Voice</span>
-                      </CyberButton>
-                      <CyberButton variant="ghost" size="sm">
-                        <ImageIcon className="w-4 h-4 mr-1" />
-                        <span>Image</span>
+                      <CyberButton variant="ghost" size="sm" onClick={toggleVoice}>
+                        {isListening ? (
+                          <>
+                            <MicOff className="w-4 h-4 mr-1 animate-pulse" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-4 h-4 mr-1" />
+                            <span>Voice</span>
+                          </>
+                        )}
                       </CyberButton>
                     </div>
 
@@ -134,6 +190,13 @@ export default function JournalPage() {
                       </div>
                     )}
                   </div>
+
+                  {forged && (
+                    <div className="mb-4 flex items-center gap-2 text-sm text-cyber-red font-rajdhani border border-cyber-red/30 rounded p-2 bg-cyber-red/10">
+                      <Check className="w-4 h-4" />
+                      Memory forged and stored in your vault.
+                    </div>
+                  )}
 
                   {!aiSummary && !isGenerating && (
                     <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 font-rajdhani">

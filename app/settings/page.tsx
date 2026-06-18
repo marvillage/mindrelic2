@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useWeb3 } from "@/components/web3-provider"
 import { CyberHeading } from "@/components/ui-elements/cyber-heading"
@@ -10,11 +10,18 @@ import { NavBar } from "@/components/nav-bar"
 import { MatrixRain } from "@/components/matrix-rain"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Download, Key, Shield, Skull, User } from "lucide-react"
+import { Download, Shield, Skull, User } from "lucide-react"
+import { getMemories, resetVault, getPrefs, setPref, type Prefs } from "@/lib/storage"
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { isConnected, account } = useWeb3()
+  const { isConnected, isGuest, account } = useWeb3()
+  const [prefs, setPrefs] = useState<Prefs>({
+    notifications: false,
+    privateMemories: false,
+    afterlifeMode: false,
+  })
+  const [memoryCount, setMemoryCount] = useState(0)
 
   // Redirect if not connected
   React.useEffect(() => {
@@ -22,6 +29,33 @@ export default function SettingsPage() {
       router.push("/")
     }
   }, [isConnected, router])
+
+  useEffect(() => {
+    setPrefs(getPrefs())
+    setMemoryCount(getMemories().length)
+  }, [])
+
+  const updatePref = (key: keyof Prefs, value: boolean) => {
+    setPrefs(setPref(key, value))
+  }
+
+  const exportRelics = () => {
+    const data = JSON.stringify(getMemories(), null, 2)
+    const blob = new Blob([data], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "mindrelic-memories.json"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleReset = () => {
+    if (confirm("This permanently deletes every memory in this vault. Continue?")) {
+      resetVault()
+      setMemoryCount(0)
+    }
+  }
 
   return (
     <main className="min-h-screen pb-16 md:pb-0 md:pt-16">
@@ -47,9 +81,16 @@ export default function SettingsPage() {
 
               <div className="space-y-4">
                 <div className="flex flex-col space-y-1">
-                  <Label className="text-sm text-gray-400">Connected Wallet</Label>
+                  <Label className="text-sm text-gray-400">{isGuest ? "Session" : "Connected Wallet"}</Label>
                   <div className="font-mono text-sm bg-cyber-darkgray p-2 rounded border border-cyber-red/30">
-                    {account || "Not connected"}
+                    {isGuest ? "Guest (local browser vault)" : account || "Not connected"}
+                  </div>
+                </div>
+
+                <div className="flex flex-col space-y-1">
+                  <Label className="text-sm text-gray-400">Memories Stored</Label>
+                  <div className="font-mono text-sm bg-cyber-darkgray p-2 rounded border border-cyber-red/30">
+                    {memoryCount}
                   </div>
                 </div>
 
@@ -60,7 +101,11 @@ export default function SettingsPage() {
                     </Label>
                     <p className="text-xs text-gray-500">Receive alerts for new features</p>
                   </div>
-                  <Switch id="notifications" />
+                  <Switch
+                    id="notifications"
+                    checked={prefs.notifications}
+                    onCheckedChange={(v) => updatePref("notifications", v)}
+                  />
                 </div>
               </div>
             </GlassCard>
@@ -80,7 +125,11 @@ export default function SettingsPage() {
                     </Label>
                     <p className="text-xs text-gray-500">Encrypt memories with additional layer</p>
                   </div>
-                  <Switch id="private-memories" />
+                  <Switch
+                    id="private-memories"
+                    checked={prefs.privateMemories}
+                    onCheckedChange={(v) => updatePref("privateMemories", v)}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -90,7 +139,11 @@ export default function SettingsPage() {
                     </Label>
                     <p className="text-xs text-gray-500">Unlock memories after period of inactivity</p>
                   </div>
-                  <Switch id="afterlife-mode" />
+                  <Switch
+                    id="afterlife-mode"
+                    checked={prefs.afterlifeMode}
+                    onCheckedChange={(v) => updatePref("afterlifeMode", v)}
+                  />
                 </div>
               </div>
             </GlassCard>
@@ -103,19 +156,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-4">
-                <p className="text-sm text-gray-400">Download all your memories and metadata from the blockchain.</p>
+                <p className="text-sm text-gray-400">Download all your memories and metadata as JSON.</p>
 
-                <div className="flex space-x-4">
-                  <CyberButton>
-                    <Download className="w-4 h-4 mr-2" />
-                    <span>Download All Relics</span>
-                  </CyberButton>
-
-                  <CyberButton variant="outline">
-                    <Key className="w-4 h-4 mr-2" />
-                    <span>Export Private Keys</span>
-                  </CyberButton>
-                </div>
+                <CyberButton onClick={exportRelics}>
+                  <Download className="w-4 h-4 mr-2" />
+                  <span>Download All Relics</span>
+                </CyberButton>
               </div>
             </GlassCard>
 
@@ -131,7 +177,11 @@ export default function SettingsPage() {
                   These actions are irreversible. Please proceed with caution.
                 </p>
 
-                <CyberButton variant="outline" className="border-red-900 text-red-500 hover:bg-red-900/10">
+                <CyberButton
+                  variant="outline"
+                  className="border-red-900 text-red-500 hover:bg-red-900/10"
+                  onClick={handleReset}
+                >
                   Reset Memory Vault
                 </CyberButton>
               </div>

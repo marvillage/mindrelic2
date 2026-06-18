@@ -7,69 +7,18 @@ import { CyberHeading } from "@/components/ui-elements/cyber-heading"
 import { GlassCard } from "@/components/ui-elements/glass-card"
 import { NavBar } from "@/components/nav-bar"
 import { MatrixRain } from "@/components/matrix-rain"
-import { Brain, Calendar, Search } from "lucide-react"
+import { Brain, Calendar, Search, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
-// Mock data for NFT memories
-const mockMemories = [
-  {
-    id: "1",
-    date: "2025-05-17",
-    summary:
-      "Explored the boundaries of digital consciousness today. The neural pathways seem to converge at unexpected junctions, creating new possibilities for memory storage.",
-    mood: "curious",
-    keywords: ["digital", "consciousness", "exploration"],
-  },
-  {
-    id: "2",
-    date: "2025-05-16",
-    summary:
-      "The virtual sunset painted the metaverse in hues of crimson and gold. I found solace in the digital silence, away from the noise of physical existence.",
-    mood: "peaceful",
-    keywords: ["metaverse", "solace", "silence"],
-  },
-  {
-    id: "3",
-    date: "2025-05-15",
-    summary:
-      "Fragments of code danced like fireflies in the dark void of my mind. Each line a memory, each function a moment captured in the eternal blockchain.",
-    mood: "reflective",
-    keywords: ["code", "memory", "blockchain"],
-  },
-  {
-    id: "4",
-    date: "2025-05-14",
-    summary:
-      "The neural interface glitched today, sending ripples of unexpected emotions through my consciousness. Even in digital form, we remain beautifully flawed.",
-    mood: "melancholic",
-    keywords: ["glitch", "emotions", "flawed"],
-  },
-  {
-    id: "5",
-    date: "2025-05-13",
-    summary:
-      "Discovered ancient data fragments from the early days of the internet. Like digital archaeology, each packet reveals the primitive beauty of our connected past.",
-    mood: "nostalgic",
-    keywords: ["archaeology", "internet", "history"],
-  },
-  {
-    id: "6",
-    date: "2025-05-12",
-    summary:
-      "The quantum encryption of today's memories feels particularly strong. Some thoughts are meant to be protected, even in the transparent world of the blockchain.",
-    mood: "secure",
-    keywords: ["quantum", "encryption", "protection"],
-  },
-]
+import { getMemories, deleteMemory, type Memory } from "@/lib/storage"
 
 export default function GalleryPage() {
   const router = useRouter()
   const { isConnected } = useWeb3()
-  const [memories, setMemories] = useState(mockMemories)
+  const [memories, setMemories] = useState<Memory[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState("date")
-  const [selectedMemory, setSelectedMemory] = useState<(typeof mockMemories)[0] | null>(null)
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null)
 
   // Redirect if not connected
   useEffect(() => {
@@ -77,6 +26,16 @@ export default function GalleryPage() {
       router.push("/")
     }
   }, [isConnected, router])
+
+  // Load saved memories from local storage on mount.
+  useEffect(() => {
+    setMemories(getMemories())
+  }, [])
+
+  const handleDelete = (id: string) => {
+    setMemories(deleteMemory(id))
+    setSelectedMemory(null)
+  }
 
   // Filter and sort memories
   const filteredMemories = memories.filter(
@@ -87,15 +46,11 @@ export default function GalleryPage() {
   )
 
   const sortedMemories = [...filteredMemories].sort((a, b) => {
-    if (sortBy === "date") {
-      return new Date(b.date).getTime() - new Date(a.date).getTime()
+    if (sortBy === "mood") {
+      return a.mood.localeCompare(b.mood)
     }
-    return 0
+    return new Date(b.date).getTime() - new Date(a.date).getTime()
   })
-
-  const handleMemoryClick = (memory: (typeof mockMemories)[0]) => {
-    setSelectedMemory(memory)
-  }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -146,7 +101,7 @@ export default function GalleryPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {sortedMemories.map((memory) => (
-            <div key={memory.id} onClick={() => handleMemoryClick(memory)}>
+            <div key={memory.id} onClick={() => setSelectedMemory(memory)}>
               <GlassCard className="h-full cursor-pointer transition-all duration-300" hoverEffect>
                 <div className="flex flex-col h-full">
                   <div className="mb-3 flex items-center justify-between">
@@ -184,14 +139,19 @@ export default function GalleryPage() {
         {sortedMemories.length === 0 && (
           <div className="text-center py-12">
             <Brain className="w-16 h-16 text-cyber-red/30 mx-auto mb-4" />
-            <p className="text-gray-500 font-rajdhani">No memories found</p>
+            <p className="text-gray-500 font-rajdhani">
+              {memories.length === 0 ? "No memories yet — forge your first one in the Journal." : "No memories match your search."}
+            </p>
           </div>
         )}
 
         {/* Memory Detail Modal */}
         {selectedMemory && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
-            <div className="w-full max-w-2xl">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+            onClick={() => setSelectedMemory(null)}
+          >
+            <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
               <GlassCard className="animate-pulse-glow">
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -223,8 +183,14 @@ export default function GalleryPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-between">
-                  <div className="text-xs text-gray-500 font-mono">Token ID: #{selectedMemory.id}</div>
+                <div className="mt-6 flex justify-between items-center">
+                  <button
+                    onClick={() => handleDelete(selectedMemory.id)}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-400 transition-colors font-rajdhani"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Forget
+                  </button>
 
                   <button
                     onClick={() => setSelectedMemory(null)}

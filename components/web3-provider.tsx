@@ -8,7 +8,9 @@ type Web3ContextType = {
   account: string | null
   isConnected: boolean
   isConnecting: boolean
+  isGuest: boolean
   connectWallet: () => Promise<void>
+  enterAsGuest: () => void
   disconnectWallet: () => void
   provider: ethers.BrowserProvider | null
 }
@@ -17,92 +19,118 @@ const Web3Context = createContext<Web3ContextType>({
   account: null,
   isConnected: false,
   isConnecting: false,
+  isGuest: false,
   connectWallet: async () => {},
+  enterAsGuest: () => {},
   disconnectWallet: () => {},
   provider: null,
 })
 
 export const useWeb3 = () => useContext(Web3Context)
 
+const GUEST_KEY = "mindrelic.guest"
+
 export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
   const [account, setAccount] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isGuest, setIsGuest] = useState(false)
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
+  // Until we've checked storage/wallet, we don't know the session state.
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    // Check if MetaMask is installed
-    const checkConnection = async () => {
-      if (typeof window !== "undefined" && window.ethereum) {
-        try {
-          const provider = new ethers.BrowserProvider(window.ethereum)
-          const accounts = await provider.listAccounts()
+    const restore = async () => {
+      // 1. Restore a guest session if one was started before.
+      if (typeof window !== "undefined" && localStorage.getItem(GUEST_KEY) === "1") {
+        setIsGuest(true)
+        setIsConnected(true)
+        setHydrated(true)
+        return
+      }
 
+      // 2. Otherwise, re-check for an already-authorized wallet.
+      if (typeof window !== "undefined" && (window as any).ethereum) {
+        try {
+          const p = new ethers.BrowserProvider((window as any).ethereum)
+          const accounts = await p.listAccounts()
           if (accounts.length > 0) {
             setAccount(accounts[0].address)
             setIsConnected(true)
-            setProvider(provider)
+            setProvider(p)
           }
         } catch (error) {
-          console.error("Failed to connect to wallet:", error)
+          console.error("Failed to restore wallet:", error)
         }
       }
+      setHydrated(true)
     }
 
-    checkConnection()
+    restore()
   }, [])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.ethereum) {
-      // Listen for account changes
-      window.ethereum.on("accountsChanged", (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0])
-          setIsConnected(true)
-        } else {
-          setAccount(null)
-          setIsConnected(false)
-        }
-      })
+    const eth = typeof window !== "undefined" ? (window as any).ethereum : undefined
+    if (!eth) return
 
-      // Listen for chain changes
-      window.ethereum.on("chainChanged", () => {
-        window.location.reload()
-      })
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length > 0) {
+        setAccount(accounts[0])
+        setIsConnected(true)
+        setIsGuest(false)
+      } else if (!isGuest) {
+        setAccount(null)
+        setIsConnected(false)
+      }
     }
+    const handleChainChanged = () => window.location.reload()
+
+    eth.on("accountsChanged", handleAccountsChanged)
+    eth.on("chainChanged", handleChainChanged)
 
     return () => {
-      if (window.ethereum) {
-        window.ethereum.removeAllListeners()
-      }
+      eth.removeListener?.("accountsChanged", handleAccountsChanged)
+      eth.removeListener?.("chainChanged", handleChainChanged)
     }
-  }, [])
+  }, [isGuest])
 
   const connectWallet = async () => {
-    if (typeof window !== "undefined" && window.ethereum) {
-      setIsConnecting(true)
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum)
-        await provider.send("eth_requestAccounts", [])
-        const accounts = await provider.listAccounts()
-
-        if (accounts.length > 0) {
-          setAccount(accounts[0].address)
-          setIsConnected(true)
-          setProvider(provider)
-        }
-      } catch (error) {
-        console.error("Failed to connect to wallet:", error)
-      } finally {
-        setIsConnecting(false)
+    const eth = typeof window !== "undefined" ? (window as any).ethereum : undefined
+    if (!eth) {
+      // No wallet installed — fall back to guest mode so the demo still works.
+      enterAsGuest()
+      return
+    }
+    setIsConnecting(true)
+    try {
+      const p = new ethers.BrowserProvider(eth)
+      await p.send("eth_requestAccounts", [])
+      const accounts = await p.listAccounts()
+      if (accounts.length > 0) {
+        if (typeof window !== "undefined") localStorage.removeItem(GUEST_KEY)
+        setAccount(accounts[0].address)
+        setIsGuest(false)
+        setIsConnected(true)
+        setProvider(p)
       }
-    } else {
-      alert("Please install MetaMask to use this feature")
+    } catch (error) {
+      console.error("Failed to connect to wallet:", error)
+    } finally {
+      setIsConnecting(false)
     }
   }
 
-  const disconnectWallet = () => {
+  const enterAsGuest = () => {
+    if (typeof window !== "undefined") localStorage.setItem(GUEST_KEY, "1")
+    setIsGuest(true)
     setAccount(null)
+    setIsConnected(true)
+  }
+
+  const disconnectWallet = () => {
+    if (typeof window !== "undefined") localStorage.removeItem(GUEST_KEY)
+    setAccount(null)
+    setIsGuest(false)
     setIsConnected(false)
     setProvider(null)
   }
@@ -113,7 +141,9 @@ export const Web3Provider = ({ children }: { children: React.ReactNode }) => {
         account,
         isConnected,
         isConnecting,
+        isGuest,
         connectWallet,
+        enterAsGuest,
         disconnectWallet,
         provider,
       }}
